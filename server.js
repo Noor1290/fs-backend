@@ -31,9 +31,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Mongo connection (Render-safe)
-import { MongoClient, ServerApiVersion } from "mongodb";
-
 const client = new MongoClient(process.env.MONGODB_URI, {
   ssl: true,                    // enforce TLS
   tlsAllowInvalidCertificates: false,
