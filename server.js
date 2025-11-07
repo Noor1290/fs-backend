@@ -32,9 +32,6 @@ app.use((req, res, next) => {
 });
 
 const client = new MongoClient(process.env.MONGODB_URI, {
-  ssl: true,
-  retryWrites: true,
-  w: "majority",
   serverApi: {
     version: ServerApiVersion.v1,
     strict: true,
@@ -42,12 +39,6 @@ const client = new MongoClient(process.env.MONGODB_URI, {
   },
 });
 
-try {
-  await client.connect();
-  console.log("✅ Connected successfully to MongoDB Atlas");
-} catch (err) {
-  console.error("❌ MongoDB connection failed:", err);
-}
 
 const db = client.db("lesson_market");
 const Lessons = db.collection("lessons");
