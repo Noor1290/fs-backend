@@ -3,7 +3,7 @@ import express from "express";
 import dotenv from "dotenv"; // load .env variables
 import cors from "cors"; //Allows frontend to call this backend
 import path from "path";
-import { MongoClient, ObjectId } from "mongodb";
+import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 
 dotenv.config(); //reads .env so process.env.MONGODB_URI becomes available.
 
@@ -31,9 +31,30 @@ app.use((req, res, next) => {
   next();
 });
 
-// Mongo connection
-const client = new MongoClient(process.env.MONGODB_URI, { ignoreUndefined: true });
-await client.connect();
+// Mongo connection (Render-safe)
+import { MongoClient, ServerApiVersion } from "mongodb";
+
+const client = new MongoClient(process.env.MONGODB_URI, {
+  ssl: true,                    // enforce TLS
+  tlsAllowInvalidCertificates: false,
+  retryWrites: true,
+  w: "majority",
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  },
+  tlsInsecure: false,
+  tlsAllowInvalidHostnames: false,
+});
+
+try {
+  await client.connect();
+  console.log("✅ Connected successfully to MongoDB Atlas");
+} catch (err) {
+  console.error("❌ MongoDB connection failed:", err);
+}
+
 const db = client.db("lesson_market");
 const Lessons = db.collection("lessons");
 const Orders  = db.collection("orders");
