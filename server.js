@@ -18,14 +18,6 @@ app.use(express.json());
 // Static images
 app.use("/images", express.static(path.join(__dirname, "images")));
 
-// Serve optimized WebP images
-app.use(
-  "/compressed_images",
-  express.static(path.join(__dirname, "compressed_images"), {
-    maxAge: "30d", // cache in browser for 30 days
-    immutable: true,
-  })
-);
 
 // Logger
 app.use((req, res, next) => {
