@@ -55,6 +55,16 @@ try {
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
+app.get("/api/debug-connection", async (_req, res) => {
+  try {
+    await client.db().command({ ping: 1 });
+    res.json({ ok: true, message: "MongoDB connected successfully ✅" });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+
 // GET /lessons
 app.get("/api/lessons", async (_req, res, next) => {
   try {
