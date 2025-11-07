@@ -32,8 +32,7 @@ app.use((req, res, next) => {
 });
 
 const client = new MongoClient(process.env.MONGODB_URI, {
-  ssl: true,                    // enforce TLS
-  tlsAllowInvalidCertificates: false,
+  ssl: true,
   retryWrites: true,
   w: "majority",
   serverApi: {
@@ -41,8 +40,6 @@ const client = new MongoClient(process.env.MONGODB_URI, {
     strict: true,
     deprecationErrors: true,
   },
-  tlsInsecure: false,
-  tlsAllowInvalidHostnames: false,
 });
 
 try {
