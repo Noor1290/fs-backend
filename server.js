@@ -1,97 +1,137 @@
-// server.js (native driver version)
+// server.js
 import express from "express";
-import dotenv from "dotenv"; // load .env variables
-import cors from "cors"; //Allows frontend to call this backend
+import dotenv from "dotenv";
+import cors from "cors";
 import path from "path";
-import { MongoClient, ObjectId } from "mongodb";
+import { MongoClient, ServerApiVersion, ObjectId } from "mongodb";
 
-dotenv.config(); //reads .env so process.env.MONGODB_URI becomes available.
+dotenv.config();
 
+// ---------- App ----------
 const app = express();
 const PORT = process.env.PORT || 3000;
 const __dirname = path.resolve();
 
-// CORS + JSON
-app.use(cors());
+app.use(cors());                // keep open CORS; tighten later if you wish
 app.use(express.json());
+app.use("/images", express.static(path.join(__dirname, "images"))); // https://.../images/foo.png
 
-// Static images
-app.use("/images", express.static(path.join(__dirname, "images")));
+// ---------- Mongo ----------
+const URI = process.env.MONGODB_URI; // e.g. mongodb+srv://user:pass@cluster.iltoi.mongodb.net/lesson_market?retryWrites=true&w=majority
+const DB_NAME = process.env.DB_NAME || "lesson_market";
 
+if (!URI) {
+  console.error("❌ MONGODB_URI missing. Set it in your Render Environment.");
+  process.exit(1);
+}
 
-// Logger
-app.use((req, res, next) => {
-  const t0 = Date.now();
-  res.on("finish", () => {
-    console.log(
-      `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now()-t0}ms)`
-    );
-    if (Object.keys(req.body || {}).length) console.log("  body:", req.body);
-  });
-  next();
+const client = new MongoClient(URI, {
+  serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true },
 });
 
-// Mongo connection
-const client = new MongoClient(process.env.MONGODB_URI, { ignoreUndefined: true });
-await client.connect();
-const db = client.db("lesson_market");
-const Lessons = db.collection("lessons");
-const Orders  = db.collection("orders");
+let db, Lessons, Orders, dbReady = false;
 
-app.get("/api/health", (_req, res) => res.json({ ok: true }));
+async function connectWithRetry(retries = 5) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      console.log(`🔌 Connecting to MongoDB (attempt ${i + 1}/${retries})...`);
+      await client.connect();
+      await client.db("admin").command({ ping: 1 });
+      db = client.db(DB_NAME);
+      Lessons = db.collection("lessons");
+      Orders  = db.collection("orders");
+      dbReady = true;
+      console.log("✅ Connected successfully to MongoDB Atlas");
+      return;
+    } catch (err) {
+      dbReady = false;
+      console.error("❌ MongoDB connection failed:", err?.message || err);
+      if (/tls|SSL|tlsv1/i.test(String(err))) {
+        console.error(
+          "ℹ️  TLS hint: Use a clean SRV URI (…/lesson_market?retryWrites=true&w=majority) and allow 0.0.0.0/0 in Atlas Network Access."
+        );
+      }
+      if (i < retries - 1) {
+        const wait = Math.min(30000, 2000 * (i + 1));
+        console.log(`⏳ Retrying in ${wait}ms…`);
+        await new Promise(r => setTimeout(r, wait));
+      }
+    }
+  }
+  console.error("❌ Could not connect to MongoDB after retries. API will report 503 until it connects.");
+}
+await connectWithRetry();
 
-// GET /lessons
-app.get("/api/lessons", async (_req, res, next) => {
+// Require DB for DB-backed routes
+function requireDb(req, res, next) {
+  if (!dbReady) return res.status(503).json({ error: "Database not ready" });
+  next();
+}
+
+// ---------- Health / Debug ----------
+app.get("/", (_req, res) => {
+  res.type("text/plain").send("fs-backend is up. Try /api/health or /api/lessons");
+});
+
+app.get("/api/health", (_req, res) => {
+  res.json({ ok: true, dbReady });
+});
+
+app.get("/api/debug-connection", async (_req, res) => {
+  try {
+    await client.db("admin").command({ ping: 1 });
+    res.json({ ok: true, message: "MongoDB connected ✅" });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---------- API ----------
+app.get("/api/lessons", requireDb, async (_req, res, next) => {
   try {
     const list = await Lessons.find({}).sort({ topic: 1, location: 1 }).toArray();
     res.json(list);
   } catch (e) { next(e); }
 });
 
-// Backend search (Approach 2)
-app.get("/api/search", async (req, res, next) => {
+app.get("/api/search", requireDb, async (req, res, next) => {
   try {
     const q = (req.query.q || "").toString().trim();
     if (!q) return res.json(await Lessons.find({}).toArray());
 
     const num = Number(q);
     const or = [
-      { topic:    { $regex: q, $options: "i" } },
+      { topic: { $regex: q, $options: "i" } },
       { location: { $regex: q, $options: "i" } },
     ];
-    if (!Number.isNaN(num)) {
-      or.push({ price: num }, { space: num });
-    }
+    if (!Number.isNaN(num)) or.push({ price: num }, { space: num });
+
     const list = await Lessons.find({ $or: or }).toArray();
     res.json(list);
   } catch (e) { next(e); }
 });
 
-// POST /orders
-app.post("/api/orders", async (req, res, next) => {
+app.post("/api/orders", requireDb, async (req, res, next) => {
   try {
     const { name, phone, items } = req.body || {};
     if (!name || !/^[A-Za-z\s]+$/.test(name)) return res.status(400).json({ error: "Invalid name" });
     if (!phone || !/^\d+$/.test(phone))      return res.status(400).json({ error: "Invalid phone" });
     if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "No items" });
 
-    // ensure lessons exist
     const ids = items.map(i => new ObjectId(i.lesson));
     const count = await Lessons.countDocuments({ _id: { $in: ids } });
     if (count !== ids.length) return res.status(400).json({ error: "One or more lessons not found" });
 
-    // create order
     const inserted = await Orders.insertOne({ name, phone, items, createdAt: new Date() });
     res.status(201).json({ _id: inserted.insertedId });
   } catch (e) { next(e); }
 });
 
-// PUT /lessons/:id (update any attribute; used to set `space` after checkout)
-app.put("/api/lessons/:id", async (req, res, next) => {
+app.put("/api/lessons/:id", requireDb, async (req, res, next) => {
   try {
     const id = new ObjectId(req.params.id);
     const update = { ...req.body };
-    if ("_id" in update) delete update._id;
+    delete update._id;
 
     const r = await Lessons.updateOne({ _id: id }, { $set: update });
     if (!r.matchedCount) return res.status(404).json({ error: "Lesson not found" });
@@ -100,10 +140,15 @@ app.put("/api/lessons/:id", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Error handler
+// ---------- Errors / Shutdown ----------
 app.use((err, _req, res, _next) => {
-  console.error(err);
+  console.error("⚠️  Handler error:", err);
   if (!res.headersSent) res.status(500).json({ error: "Internal Server Error" });
+});
+
+process.on("SIGTERM", async () => {
+  try { await client?.close(); } catch {}
+  process.exit(0);
 });
 
 app.listen(PORT, () => console.log(`✅ API on :${PORT}`));
