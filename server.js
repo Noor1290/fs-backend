@@ -1,40 +1,26 @@
-// server.js (native driver version)
 import express from "express";
-import dotenv from "dotenv"; // load .env variables
-import cors from "cors"; //Allows frontend to call this backend
+import dotenv from "dotenv";
+import cors from "cors";
 import path from "path";
-import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
+import { MongoClient, ServerApiVersion, ObjectId } from "mongodb";
 
-dotenv.config(); //reads .env so process.env.MONGODB_URI becomes available.
-
+dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const __dirname = path.resolve();
 
-// CORS + JSON
 app.use(cors());
 app.use(express.json());
-
-// Static images
 app.use("/images", express.static(path.join(__dirname, "images")));
 
-
-// Logger
-app.use((req, res, next) => {
-  const t0 = Date.now();
-  res.on("finish", () => {
-    console.log(
-      `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now()-t0}ms)`
-    );
-    if (Object.keys(req.body || {}).length) console.log("  body:", req.body);
-  });
-  next();
-});
-
-let db, Lessons, Orders;
+// ===============================
+// 🧩 GLOBAL MONGO CLIENT (accessible everywhere)
+// ===============================
+let client, db, Lessons, Orders;
 
 try {
-  const client = new MongoClient(process.env.MONGODB_URI, {
+  client = new MongoClient(process.env.MONGODB_URI, {
+    ssl: true,
     serverApi: {
       version: ServerApiVersion.v1,
       strict: true,
@@ -42,7 +28,8 @@ try {
     },
   });
 
-  await client.connect();
+  console.log("Connecting to MongoDB Atlas...");
+  await client.connect(); // 🔥 required
   await client.db("admin").command({ ping: 1 });
   console.log("✅ Connected successfully to MongoDB Atlas");
 
@@ -53,16 +40,20 @@ try {
   console.error("❌ MongoDB connection failed:", err);
 }
 
-app.get("/api/health", (_req, res) => res.json({ ok: true }));
-
 app.get("/api/debug-connection", async (_req, res) => {
   try {
+    if (!client) return res.status(500).json({ ok: false, error: "Client not initialized" });
     await client.db().command({ ping: 1 });
     res.json({ ok: true, message: "MongoDB connected successfully ✅" });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+
+
+app.get("/api/health", (_req, res) => res.json({ ok: true }));
+
+
 
 
 // GET /lessons
