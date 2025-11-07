@@ -1,1 +1,1 @@
-# fs-backend
+ npm install express dotenv cors path mongodb
