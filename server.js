@@ -1,60 +1,44 @@
+// server.js (native driver version)
 import express from "express";
-import dotenv from "dotenv";
-import cors from "cors";
+import dotenv from "dotenv"; // load .env variables
+import cors from "cors"; //Allows frontend to call this backend
 import path from "path";
-import { MongoClient, ServerApiVersion, ObjectId } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 
-dotenv.config();
+dotenv.config(); //reads .env so process.env.MONGODB_URI becomes available.
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const __dirname = path.resolve();
 
+// CORS + JSON
 app.use(cors());
 app.use(express.json());
+
+// Static images
 app.use("/images", express.static(path.join(__dirname, "images")));
 
-// ===============================
-// 🧩 GLOBAL MONGO CLIENT (accessible everywhere)
-// ===============================
-let client, db, Lessons, Orders;
 
-try {
-  client = new MongoClient(process.env.MONGODB_URI, {
-    ssl: true,
-    serverApi: {
-      version: ServerApiVersion.v1,
-      strict: true,
-      deprecationErrors: true,
-    },
+// Logger
+app.use((req, res, next) => {
+  const t0 = Date.now();
+  res.on("finish", () => {
+    console.log(
+      `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now()-t0}ms)`
+    );
+    if (Object.keys(req.body || {}).length) console.log("  body:", req.body);
   });
-
-  console.log("Connecting to MongoDB Atlas...");
-  await client.connect(); // 🔥 required
-  await client.db("admin").command({ ping: 1 });
-  console.log("✅ Connected successfully to MongoDB Atlas");
-
-  db = client.db("lesson_market");
-  Lessons = db.collection("lessons");
-  Orders = db.collection("orders");
-} catch (err) {
-  console.error("❌ MongoDB connection failed:", err);
-}
-
-app.get("/api/debug-connection", async (_req, res) => {
-  try {
-    if (!client) return res.status(500).json({ ok: false, error: "Client not initialized" });
-    await client.db().command({ ping: 1 });
-    res.json({ ok: true, message: "MongoDB connected successfully ✅" });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
+  next();
 });
 
+// Mongo connection
+const client = new MongoClient(process.env.MONGODB_URI, { ignoreUndefined: true });
+await client.connect();
+const db = client.db("lesson_market");
+const Lessons = db.collection("lessons");
+const Orders  = db.collection("orders");
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
-
-
-
 
 // GET /lessons
 app.get("/api/lessons", async (_req, res, next) => {
