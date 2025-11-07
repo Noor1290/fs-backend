@@ -31,6 +31,9 @@ app.use((req, res, next) => {
   next();
 });
 
+let db, Lessons, Orders;
+
+try {
   const client = new MongoClient(process.env.MONGODB_URI, {
     serverApi: {
       version: ServerApiVersion.v1,
@@ -38,11 +41,17 @@ app.use((req, res, next) => {
       deprecationErrors: true,
     },
   });
-await client.connect();
 
-const db = client.db("lesson_market");
-const Lessons = db.collection("lessons");
-const Orders  = db.collection("orders");
+  await client.connect();
+  await client.db("admin").command({ ping: 1 });
+  console.log("✅ Connected successfully to MongoDB Atlas");
+
+  db = client.db("lesson_market");
+  Lessons = db.collection("lessons");
+  Orders = db.collection("orders");
+} catch (err) {
+  console.error("❌ MongoDB connection failed:", err);
+}
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
