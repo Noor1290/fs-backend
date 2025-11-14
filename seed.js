@@ -1,14 +1,24 @@
-// seed.js (native)
+// ------------------------------------------------------------
+// Load environment variables (MONGODB_URI)
+// ------------------------------------------------------------
 import dotenv from "dotenv";
 import { MongoClient } from "mongodb";
 dotenv.config();
 
+// ------------------------------------------------------------
+// Connect to MongoDB using the connection string from .env
+// ------------------------------------------------------------
 const client = new MongoClient(process.env.MONGODB_URI);
 await client.connect();
+
+// Select database and collection
 const db = client.db("lesson_market");
 const Lessons = db.collection("lessons");
 
+// Clear existing lesson data before inserting fresh records
 await Lessons.deleteMany({});
+
+// Insert initial lesson documents
 await Lessons.insertMany([
   { topic: "Web Design Basics",     location: "London",     price: 80,  space: 5, image: "images/Design.jpg" },
   { topic: "JavaScript Essentials", location: "Manchester", price: 95,  space: 5, image: "images/JS.jpg" },
@@ -24,7 +34,11 @@ await Lessons.insertMany([
   { topic: "Python for AI",         location: "Oxford",     price: 140, space: 5, image: "images/Python.jpg" }
 ]);
 
+
+// Console output to confirm seeding is complete
 console.log("✅ Seeded with compressed images");
-console.log("✅ Seeded (native driver)");
+console.log("✅ Seeded (native MongoDB driver)");
+
+// Close connection and exit script
 await client.close();
 process.exit(0);
