@@ -152,12 +152,31 @@ app.get("/api/search", requireDb, async (req, res, next) => {
 
     const or = [
       { topic: { $regex: q, $options: "i" } },
-      { location: { $regex: q, $options: "i" } },
+      { location: { $regex: q, $options: "i" } }
     ];
 
-    // If user typed a number → also search price and space
+    // If the search looks like a number → use regex match on numeric fields
     if (!Number.isNaN(num)) {
-      or.push({ price: num }, { space: num });
+      or.push(
+        {
+          $expr: {
+            $regexMatch: {
+              input: { $toString: "$price" },
+              regex: q,
+              options: "i"
+            }
+          }
+        },
+        {
+          $expr: {
+            $regexMatch: {
+              input: { $toString: "$space" },
+              regex: q,
+              options: "i"
+            }
+          }
+        }
+      );
     }
 
     const list = await Lessons.find({ $or: or }).toArray();
@@ -166,6 +185,7 @@ app.get("/api/search", requireDb, async (req, res, next) => {
     next(e);
   }
 });
+
 
 /**
  * Validates name, phone and items.
