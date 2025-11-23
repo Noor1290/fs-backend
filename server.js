@@ -56,6 +56,7 @@ async function connectWithRetry(retries = 5) {
       await client.db("admin").command({ ping: 1 });
 
       db = client.db(DB_NAME);
+      console.log("📌 Using database:", db.databaseName);
       Lessons = db.collection("lessons");
       Orders = db.collection("orders");
       dbReady = true;
